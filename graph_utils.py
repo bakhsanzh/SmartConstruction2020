@@ -1,8 +1,6 @@
+from utils import DEVICE
 from functools import partial
 import dgl
-import torch
-
-device = torch.device('cpu')
 
 
 def filter_edges_by_type(edges, etype_id):
@@ -35,7 +33,8 @@ def get_action_edges(graph: dgl.DGLGraph):
 
 
 def g2e_map(graph: dgl.DGLGraph, nn_action: int):
-    env_action = int(graph.edges[nn_action].data['g2e'][0].item())
+    assigned_edge_id = get_action_edges(graph)[nn_action]
+    env_action = int(graph.edges[assigned_edge_id].data['g2e'][0].item())
     return env_action
 
 

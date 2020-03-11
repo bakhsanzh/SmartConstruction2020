@@ -1,12 +1,12 @@
+import torch
 import torch.nn as nn
-from torch.distributions import Categorical
+from graph_utils import *
 from networks.MLP import MultiLayerPerceptron as MLP
 from networks.RelationalGraphNetworks.RelationalGraphLayers import MultiLayerRGN, SingleLayerRGN
 # from networks.SingleLayerRGN import SingleLayerRGN as SingleLayerRGN
 from networks.GraphActor import GraphActor
-from graph_utils import *
 from networks.ConfigBase import ConfigBase
-
+from torch.distributions import Categorical
 
 class GACConfig(ConfigBase):
     def __init__(self, name='gac', gac_conf=None, rgn_conf=None):
@@ -14,9 +14,9 @@ class GACConfig(ConfigBase):
 
         self.gac = {
             'multihop_rgn': True,
-            'node_embed_dim': 16,
-            'nf_init_dim': 5,  # depo, not depo, assigned, unassigned, to_depot_norm
-            'ef_init_dim': 3,  # dt_norm, to depot, non to depot
+            'node_embed_dim': 32,
+            'nf_init_dim': 9,  # 'accessible', 'inaccessible', 'assigned', 'unassigned', 'has_ug', 'not_has_ug', 'dt', 'nb_min', 'nb_max'
+            'ef_init_dim': 1,
         }
 
         self.rgn = {
@@ -24,12 +24,12 @@ class GACConfig(ConfigBase):
             'nf_init_dim': self.gac['nf_init_dim'],
             'ef_init_dim': self.gac['ef_init_dim'],
             'output_dim': self.gac['node_embed_dim'],
-            'num_hidden_layers': 2,
-            'hidden_dim': 16,
+            'num_hidden_layers': 1,
+            'hidden_dim': 64,
             'num_edge_types': 4,
             'num_node_types': 2,
             'use_multi_node_types': True,
-            'use_ef_init': True,
+            'use_ef_init': False,
             'use_dst_features': False,
             'use_nf_concat': True,
             'num_neurons': [32],
@@ -57,6 +57,7 @@ class GraphActorCritic(nn.Module):
 
         self.critic = MLP(self.node_embed_dim, 1)
 
+        self.rollout_memory = []
         self.edge_actions = []
         self.states = []  # dgl graphs
         self.logprobs = []  # scalar values
@@ -64,9 +65,9 @@ class GraphActorCritic(nn.Module):
         self.rewards = []
 
     def forward(self, graph: dgl.DGLGraph):
-        graph = self.rgn(graph=graph, node_feature=graph.ndata['nf_init'])
+        graph = self.rgn(graph=graph, node_feature=graph.ndata['nf_init'])  # Relational Graph Network
         node_embed = graph.ndata.pop('node_feature')
-        temp = node_embed.cpu().detach().numpy()
+        # temp = node_embed.cpu().detach().numpy()
 
         # critic
         state_value = self.critic(node_embed)
@@ -76,7 +77,7 @@ class GraphActorCritic(nn.Module):
         action_probabilities = self.actor(graph=graph, node_feature=node_embed)  # shape [n_actions]
 
         # sample action for exploration
-        edge_action_distribution = torch.distributions.Categorical(action_probabilities)
+        edge_action_distribution = Categorical(action_probabilities)
         nn_action = edge_action_distribution.sample()  # tensor(x)  # index of the edge chosen for action
 
         # logprob of the nn_action
@@ -84,38 +85,32 @@ class GraphActorCritic(nn.Module):
 
         # get action
         action_edge_ids = get_action_edges(graph)
-        assigned_edge_id = action_edge_ids[nn_action]
 
         # ROLLOUT MEMORY
-        memory_bundle = {
-            'graph': graph,
-            'nn_action': nn_action,
-            'logprob': logprob,
-            'state_value': state_value
-        }
-        self.states.append(graph)
-        self.edge_actions.append(nn_action)
-        self.logprobs.append(logprob)
-        self.state_values.append(state_value)
+        # self.states.append(graph)
+        # self.edge_actions.append(nn_action)
+        # self.logprobs.append(logprob)
+        # self.state_values.append(state_value)
 
-        return assigned_edge_id.item()  # return edge id
+        return nn_action, logprob, state_value
 
     def optimal(self, graph: dgl.DGLGraph):
         graph = self.rgn(graph=graph, node_feature=graph.ndata['nf_init'])
         node_embed = graph.ndata.pop('node_feature')
-        temp = node_embed.cpu().detach().numpy()
-        action_probabilities = self.actor(graph=graph, node_feature=node_embed)  # shape [n_actions]
-        argmax_edge_action = torch.argmax(action_probabilities).item()
-        action_edge_ids = get_action_edges(graph)
-        assigned_edge_id = action_edge_ids[argmax_edge_action]
 
-        return assigned_edge_id
+        action_probabilities = self.actor(graph=graph, node_feature=node_embed)  # shape [n_actions]
+        argmax_nn_action = torch.argmax(action_probabilities).item()
+
+        # action_edge_ids = get_action_edges(graph)
+        # assigned_edge_id = action_edge_ids[argmax_nn_action]
+        # return assigned_edge_id
+        return argmax_nn_action, dn(action_probabilities)
 
     def evaluate(self,
-                 state_memory: list,
-                 edge_action_memory: list,
+                 rollout_graphs: list,
+                 rollout_nn_actions: list,
                  ):
-        batch_graph = dgl.batch(state_memory)
+        batch_graph = dgl.batch(rollout_graphs)
         batch_graph.set_n_initializer(dgl.init.zero_initializer)
 
         batch_graph = self.rgn(graph=batch_graph, node_feature=batch_graph.ndata['nf_init'])
@@ -137,10 +132,10 @@ class GraphActorCritic(nn.Module):
             edge_action_distribution = torch.distributions.Categorical(action_probabilities)
 
             # get old action from the rollout
-            old_edge_action = edge_action_memory[i]
+            old_nn_action = rollout_nn_actions[i]
 
             # get log probability of the old action given current policy distribution
-            logprob = edge_action_distribution.log_prob(old_edge_action)
+            logprob = edge_action_distribution.log_prob(old_nn_action)
 
             # get entropy of current policy
             entropy = edge_action_distribution.entropy()
@@ -153,15 +148,12 @@ class GraphActorCritic(nn.Module):
         state_values = torch.stack(state_values, dim=0).squeeze(dim=1)
         entropies = torch.stack(entropies, dim=0)
 
-        self.logprobs.append(logprobs)
-        self.state_values.append(state_values)
-        entropy_mean = entropies.mean()
-
-        return entropy_mean
+        return logprobs, state_values, entropies
 
     def clear_memory(self):
-        del self.edge_actions[:]
-        del self.states[:]
-        del self.logprobs[:]
-        del self.state_values[:]
-        del self.rewards[:]
+        self.rollout_memory = []
+        # del self.edge_actions[:]
+        # del self.states[:]
+        # del self.logprobs[:]
+        # del self.state_values[:]
+        # del self.rewards[:]

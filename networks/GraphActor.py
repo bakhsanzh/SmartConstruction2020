@@ -1,8 +1,7 @@
-
 import torch
 import torch.nn as nn
-from networks.MLP import MultiLayerPerceptron as MLP
 from graph_utils import get_action_edges
+from networks.MLP import MultiLayerPerceptron as MLP
 
 
 class GraphActor(nn.Module):

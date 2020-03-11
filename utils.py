@@ -1,7 +1,7 @@
 from copy import deepcopy
 import numpy as np
 import torch
-
+import dgl
 DEVICE = torch.device('cpu')
 VERY_SMALL_NUMBER = 1e-10
 VERY_LARGE_NUMBER = 1e10
@@ -20,7 +20,10 @@ TABLE_COL_NAMES = [
     'row',
     'col',
     'process_time',
+    'under_task_id',
     'dt',
+    'nb_min',
+    'nb_max',
     'target',
     'visited_worker_id',
 ]

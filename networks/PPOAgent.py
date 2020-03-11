@@ -1,14 +1,8 @@
-from copy import deepcopy
-import dgl
 import torch
-from networks.ConfigBase import ConfigBase
 import torch.nn as nn
-from temp.networks.GraphActorCritic import GraphActorCritic as GAC
-from temp.networks.GraphActorCritic import GACConfig
-from temp.graph_utils import *
-from ranger import Ranger  # this is from ranger.py
-from ranger import RangerVA  # this is from ranger913A.py
-from ranger import RangerQH  # this is from rangerqh.py
+from graph_utils import *
+from networks.GraphActorCritic import GraphActorCritic as GAC
+from networks.GraphActorCritic import GACConfig
 
 
 class PPOAgent:
@@ -16,7 +10,7 @@ class PPOAgent:
                  lr: float,
                  betas: tuple = (0.9, 0.999),
                  gamma: float = 0.99,
-                 k_epochs: int = 5,
+                 k_epochs: int = 4,
                  eps_clip: float = 0.2,
                  ):
         self.lr = lr
@@ -34,35 +28,42 @@ class PPOAgent:
         self.MseLoss = nn.MSELoss()
 
     def update(self):
+
+        rollout_rewards = []
+        rollout_graphs = []
+        rollout_nn_actions = []
+        rollout_logprobs = []
+
+        for memory_instance in self.policy_old.rollout_memory:
+            rollout_rewards.append(memory_instance['reward'])
+            rollout_graphs.append(memory_instance['graph'])
+            rollout_nn_actions.append(memory_instance['nn_action'])
+            rollout_logprobs.append(memory_instance['logprob'])
+
         # Monte Carlo estimate of state rewards:
         rewards = []
         discounted_reward = 0
-        for reward in reversed(self.policy_old.rewards):
+        for reward in reversed(rollout_rewards):
             discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
 
         # Normalizing the rewards:
-        rewards = torch.tensor(rewards).to(device)  # shape [rollout size]
+        rewards = torch.tensor(rewards).to(DEVICE)  # shape [rollout size]
         rewards = (rewards - rewards.mean())
         rewards = rewards / (rewards.std() + 1e-5)
 
-        states_memory = self.policy_old.states
-        edge_actions_memory = self.policy_old.edge_actions
+        rollout_logprobs = torch.stack(rollout_logprobs).to(DEVICE).detach()  # size [rollout_size]
 
-        old_logprobs = torch.stack(self.policy_old.logprobs).to(device).detach()  # size [rollout_size]
-
-        # Optimize policy for K epochs:
+        # Optimize policy for k_epochs:
         for _ in range(self.k_epochs):
             # Evaluating old actions and values :
-            dist_entropy = self.policy.evaluate(state_memory=states_memory,
-                                                edge_action_memory=edge_actions_memory)  # size [] = scalar value
+            logprobs, state_values, entropies = self.policy.evaluate(rollout_graphs=rollout_graphs, rollout_nn_actions=rollout_nn_actions)  # size [] = scalar value
+            dist_entropy = entropies.mean()
 
             # Finding the ratio (pi_theta / pi_theta__old):
-            logprobs = self.policy.logprobs[0].to(device)  # size [batch_size]
-            ratios = torch.exp(logprobs - old_logprobs.detach())  # size [batch_size]
+            ratios = torch.exp(logprobs - rollout_logprobs)  # size [batch_size]
 
             # Finding Surrogate Loss:
-            state_values = self.policy.state_values[0].to(device)  # size [13] = [batch_size]
             advantages = rewards - state_values.detach()  # size [13] = [batch_size]
 
             surr1 = ratios * advantages  # size [13] = [batch_size]
@@ -71,11 +72,8 @@ class PPOAgent:
 
             # take gradient step
             self.optimizer.zero_grad()
-            mean_loss = loss.mean()
-            mean_loss.backward()
-
+            loss.mean().backward()
             self.optimizer.step()
-            self.policy.clear_memory()
 
         self.policy_old.clear_memory()
 

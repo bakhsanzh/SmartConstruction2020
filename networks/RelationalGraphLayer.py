@@ -3,8 +3,6 @@ from torch.nn.functional import relu
 from networks.MLP import MultiLayerPerceptron as MLP
 from functools import partial
 from graph_utils import *
-from networks.ConfigBase import ConfigBase
-import torch.nn as nn
 
 
 class RelationalGraphLayer(torch.nn.Module):
