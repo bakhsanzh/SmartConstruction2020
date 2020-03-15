@@ -36,7 +36,3 @@ def g2e_map(graph: dgl.DGLGraph, nn_action: int):
     assigned_edge_id = get_action_edges(graph)[nn_action]
     env_action = int(graph.edges[assigned_edge_id].data['g2e'][0].item())
     return env_action
-
-
-def dn(tensor):
-    return tensor.detach().cpu().numpy()

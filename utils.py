@@ -7,7 +7,7 @@ from environment import Environment
 import json
 import os
 from networks.PPOAgent import PPOAgent
-from networks.GraphActorCritic import GraphActorCritic, RolloutEncoder, PolicyNet
+from networks.GraphActorCritic import GraphActorCritic
 from copy import deepcopy
 
 # DEVICE = torch.device('cpu')
@@ -243,3 +243,7 @@ def filter_trivials(round_buffer, large_buffer):
     if len(filtered_round_buffer) > 0:
         filtered_round_buffer[-1]['last_assignment'] = True
     return filtered_round_buffer
+
+
+def dn(tensor):
+    return tensor.detach().cpu().numpy()
