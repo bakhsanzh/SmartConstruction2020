@@ -1,0 +1,18 @@
+{
+    "event": "two_hills_10x10",
+    "kpi_dict": {
+        "square_sink_10x10": {
+            "env_ticks": 52.0,
+            "reward": 52.0
+        },
+        "two_hills_10x10": {
+            "env_ticks": 19.0,
+            "reward": 19.0
+        },
+        "wavelike_5x9": {
+            "env_ticks": 21.0,
+            "reward": 21.0
+        }
+    },
+    "num_epochs": 882
+}

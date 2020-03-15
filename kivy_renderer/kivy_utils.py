@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw, ImageFilter
 import colour as clr
 from copy import copy, deepcopy
 from kivy.clock import Clock
+
 WORKER_COLORS = [
     '#FF1654',
     '#5026a7',

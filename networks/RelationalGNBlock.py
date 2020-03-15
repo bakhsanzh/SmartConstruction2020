@@ -1,11 +1,11 @@
 import torch
 from torch.nn.functional import relu
 from networks.MLP import MultiLayerPerceptron as MLP
-from functools import partial
 from graph_utils import *
+from functools import partial
 
 
-class RelationalGraphLayer(torch.nn.Module):
+class RelationalGNBlock(torch.nn.Module):
     def __init__(self,
                  input_dim: int,
                  output_dim: int,
@@ -25,7 +25,7 @@ class RelationalGraphLayer(torch.nn.Module):
                  num_node_types: int = 2,
                  use_noisy=False):
 
-        super(RelationalGraphLayer, self).__init__()
+        super(RelationalGNBlock, self).__init__()
         if num_neurons is None:
             num_neurons = [32]
         self.input_dim = input_dim

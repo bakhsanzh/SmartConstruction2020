@@ -37,13 +37,23 @@ class MultiLayerPerceptron(nn.Module):
             act = activation[i] if _list_act else activation
             drop_p = dropout_probability[i] if _list_drop_p else dropout_probability
 
-            linear_module = LinearModule(in_features=in_dim, out_features=out_dim, activation=act,
-                                         norm=norm, dropout_p=drop_p, weight_init=weight_init, use_noisy=use_noisy)
+            linear_module = LinearModule(in_features=in_dim,
+                                         out_features=out_dim,
+                                         activation=act,
+                                         norm=norm,
+                                         dropout_p=drop_p,
+                                         weight_init=weight_init,
+                                         use_noisy=use_noisy)
             self.layers.append(linear_module)
 
-        output_layer = LinearModule(in_features=input_dims[-1], out_features=output_dims[-1],
+        output_layer = LinearModule(in_features=input_dims[-1],
+                                    out_features=output_dims[-1],
                                     activation=out_activation,
-                                    norm=None, dropout_p=0.0, weight_init=weight_init, use_noisy=use_noisy)
+                                    norm=None,
+                                    dropout_p=0.0,
+                                    weight_init=weight_init,
+                                    use_noisy=use_noisy)
+
         self.layers.append(output_layer)
 
     def forward(self, x):

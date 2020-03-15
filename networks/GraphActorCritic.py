@@ -1,12 +1,16 @@
+from utils import distribute_assignments, filter_trivials, deepcopy
 import torch
 import torch.nn as nn
 from graph_utils import *
 from networks.MLP import MultiLayerPerceptron as MLP
-from networks.RelationalGraphNetworks.RelationalGraphLayers import MultiLayerRGN, SingleLayerRGN
+from networks.RelationalGN import RelationalGN
 # from networks.SingleLayerRGN import SingleLayerRGN as SingleLayerRGN
 from networks.GraphActor import GraphActor
 from networks.ConfigBase import ConfigBase
 from torch.distributions import Categorical
+from environment import Environment
+import numpy as np
+
 
 class GACConfig(ConfigBase):
     def __init__(self, name='gac', gac_conf=None, rgn_conf=None):
@@ -15,7 +19,8 @@ class GACConfig(ConfigBase):
         self.gac = {
             'multihop_rgn': True,
             'node_embed_dim': 32,
-            'nf_init_dim': 9,  # 'accessible', 'inaccessible', 'assigned', 'unassigned', 'has_ug', 'not_has_ug', 'dt', 'nb_min', 'nb_max'
+            'nf_init_dim': 9,
+            # 'accessible', 'inaccessible', 'assigned', 'unassigned', 'has_ug', 'not_has_ug', 'dt', 'nb_min', 'nb_max'
             'ef_init_dim': 1,
         }
 
@@ -43,26 +48,121 @@ class GACConfig(ConfigBase):
         }
 
 
+class PolicyNet(nn.Module):
+    def __init__(self, conf=None):
+        super(PolicyNet, self).__init__()
+        self.conf = conf
+        self.graph_network = RelationalGN(**conf.graph_network)
+        self.actor = GraphActor(**conf.actor)
+
+    def forward(self, graph: dgl.DGLGraph):
+        graph = self.graph_network(graph=graph, node_feature=graph.ndata['nf_init'])  # Relational Graph Network
+        node_feature = graph.ndata.pop('node_feature')
+
+        # actor (action probs)
+        action_probabilities = self.actor(graph=graph, node_feature=node_feature)  # shape [n_actions]
+
+        # sample action for exploration
+        edge_action_distribution = Categorical(action_probabilities)
+        nn_action = edge_action_distribution.sample()  # tensor(x)  # index of the edge chosen for action
+
+        # logprob of the nn_action
+        # logprob = edge_action_distribution.log_prob(nn_action)  # tensor(x)
+
+        return nn_action
+
+
+class RolloutEncoder(nn.Module):
+    def __init__(self,
+                 rnn_hidden_dim: int,
+                 node_embed_dim: int,
+                 planning_horizon: int,
+                 conf=None):
+        """
+        :param rnn_hidden_dim:
+        :param node_embed_dim:
+        :param planning_horizon:
+        :param conf: ConfigBase
+        """
+        super(RolloutEncoder, self).__init__()
+        self.conf = conf
+        self.planning_horizon = planning_horizon
+        self.rnn_hidden_dim = rnn_hidden_dim
+        self.node_embed_dim = node_embed_dim
+        self.reward_dim = 1
+
+        self.rollout_policy = PolicyNet(conf.policy_network)
+        self.rnn = torch.nn.GRUCell(self.node_embed_dim + self.reward_dim, hidden_size=self.rnn_hidden_dim)
+
+    def forward(self, env: Environment):
+        """
+        :param env:
+        :return:
+        """
+
+        total_num_assignments = 0  # total number of assignments (aka actions) made during the episode
+        round_id = 0
+        rollout_buffer = []
+
+        # --------------------------------------------------------------------------------------------------------------
+        # ROLLOUT
+        while total_num_assignments < self.planning_horizon:
+            round_buffer, num_trivial_assignments = distribute_assignments(env=env,
+                                                                           to_compute_rewards=True,
+                                                                           policy=self.rollout_policy,
+                                                                           mode="rollout",
+                                                                           assignment_round_id=round_id)
+
+            done, dt_trigger, trigger_worker_ids = env.update()  # update environment
+            filtered_round_buffer = filter_trivials(round_buffer, rollout_buffer)
+
+            for assign_instance in filtered_round_buffer:
+                rollout_buffer.append(assign_instance)
+
+            total_num_assignments += len(filtered_round_buffer)
+            round_id += 1
+
+            if done:
+                break
+
+        # --------------------------------------------------------------------------------------------------------------
+        # ROLLOUT GRAPHS SEQUENCE RNN ENCODING
+        rollout_embed = torch.zeros(size=rollout_buffer[0]['graph'].ndata['nf_'])
+        for assignment_instance in rollout_buffer:
+            graph, reward = assignment_instance['graph'], assignment_instance['reward']
+            node_feature = graph.ndata.pop('node_feature')
+            temp = torch.tensor((), dtype=torch.float32)
+            reward = temp.new_full(size=(node_feature.shape[0], 1), fill_value=reward)
+
+            rnn_input = torch.cat([node_feature, reward], dim=-1)
+            rollout_embed = self.rnn(rnn_input, rollout_embed)
+        # --------------------------------------------------------------------------------------------------------------
+
+        return rollout_embed
+
+
 class GraphActorCritic(nn.Module):
     def __init__(self, conf):
         super(GraphActorCritic, self).__init__()
         self.conf = conf  # type: GACConfig
+        self.num_rollouts = self.conf.gac['num_rollouts']
+        self.planning_horizon = self.conf.gac['planning_horizon']
         self.node_embed_dim = self.conf.gac['node_embed_dim']
+        self.rollout_encoder = RolloutEncoder(conf=conf.rollout_encoder, **conf.rollout_encoder)
+        self.model_free_gn = RelationalGN(**self.conf.mf_gn).to(DEVICE)
         self.multihop_rgn = self.conf.gac['multihop_rgn']
-        if self.multihop_rgn:
-            self.rgn = MultiLayerRGN(**self.conf.rgn)
-        else:
-            self.rgn = SingleLayerRGN(**self.conf.rgn)
-        self.actor = GraphActor(**self.conf.graph_actor)
-
-        self.critic = MLP(self.node_embed_dim, 1)
-
+        self.multihop_rgn = RelationalGN(**self.conf.rgn).to(DEVICE)
+        self.actor = GraphActor(**self.conf.graph_actor).to(DEVICE)
+        self.critic = MLP(self.node_embed_dim, 1).to(DEVICE)
         self.rollout_memory = []
         self.edge_actions = []
-        self.states = []  # dgl graphs
-        self.logprobs = []  # scalar values
-        self.state_values = []
         self.rewards = []
+
+        """
+        # if self.multihop_rgn:
+        #     self.rgn = MultiLayerRGN(**self.conf.rgn).to(DEVICE)
+        # else:
+        #     self.rgn = SingleLayerRGN(**self.conf.rgn).to(DEVICE)"""
 
     def forward(self, graph: dgl.DGLGraph):
         graph = self.rgn(graph=graph, node_feature=graph.ndata['nf_init'])  # Relational Graph Network
@@ -83,14 +183,32 @@ class GraphActorCritic(nn.Module):
         # logprob of the nn_action
         logprob = edge_action_distribution.log_prob(nn_action)  # tensor(x)
 
-        # get action
-        action_edge_ids = get_action_edges(graph)
+        return nn_action, logprob, state_value
 
-        # ROLLOUT MEMORY
-        # self.states.append(graph)
-        # self.edge_actions.append(nn_action)
-        # self.logprobs.append(logprob)
-        # self.state_values.append(state_value)
+    def sim2a_forward(self,
+                      graph: dgl.DGLGraph,
+                      env: Environment):
+
+        rollout_embed = self.rollout_encoder(env=deepcopy(env))
+        updated_graph = self.model_free_gn(graph=graph, node_feature=graph.ndata['nf_init'])  # Relational Graph Network
+        node_embed = updated_graph.ndata.pop('node_feature')
+
+        actor_input = torch.cat([rollout_embed, node_embed], dim=-1)
+        action_probabilities = self.actor(graph=graph, node_feature=actor_input)  # shape [n_actions]
+
+        # critic
+        state_value = self.critic(node_embed)
+        state_value = state_value.mean(dim=0)
+
+        # actor (action probs)
+        action_probabilities = self.actor(graph=graph, node_feature=node_embed)  # shape [n_actions]
+
+        # sample action for exploration
+        edge_action_distribution = Categorical(action_probabilities)
+        nn_action = edge_action_distribution.sample()  # tensor(x)  # index of the edge chosen for action
+
+        # logprob of the nn_action
+        logprob = edge_action_distribution.log_prob(nn_action)  # tensor(x)
 
         return nn_action, logprob, state_value
 
@@ -152,8 +270,3 @@ class GraphActorCritic(nn.Module):
 
     def clear_memory(self):
         self.rollout_memory = []
-        # del self.edge_actions[:]
-        # del self.states[:]
-        # del self.logprobs[:]
-        # del self.state_values[:]
-        # del self.rewards[:]

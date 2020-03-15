@@ -11,11 +11,14 @@ from sklearn.datasets.samples_generator import make_blobs
 class Environment:
     def __init__(self,
                  env_mode: str,
+                 test_data_dict: dict = None,
                  ):
         self.env_mode = env_mode
         self.env_ticks = 0
+        self.test_map_dict = test_data_dict
 
         # INPUTS
+        self.gen_method = None
         self.num_workers = None
         self.worker_coords_init = None
         self.demand_map_init = None
@@ -40,12 +43,16 @@ class Environment:
         self.nb_fp = np.array([[1, 1, 1],  # 8-neighborhood
                                [1, 0, 1],
                                [1, 1, 1]])
-        self.entropy_multiplier = 3
+        self.entropy_multiplier = 6
         self.initialize()
 
     def initialize(self):
         if self.env_mode == 'train':
             generation_methods = ['linear', 'random', 'hill']
+            self.gen_method = gen_method = np.random.choice(generation_methods)
+            # TODO: RANDOMIZE NUMBER OF WORKERS
+            # TODO: RANDOMIZE ALTITUDE MAP
+            # TODO: RANDOMIZE DEMAND MAP
             self.num_workers = 2
             max_depth = 3
             num_rows, num_cols = np.random.randint(3, 7, size=2)
@@ -53,9 +60,6 @@ class Environment:
                 [0, 0],
                 [num_cols - 1, num_rows - 1]
             ])
-
-            self.gen_method = gen_method = np.random.choice(generation_methods)
-
             if gen_method == 'random':
                 self.demand_map_init = np.random.randint(0, max_depth + 1, size=[num_rows, num_cols])
             elif gen_method == 'linear':
@@ -70,35 +74,9 @@ class Environment:
             self.altitude_map_init = np.zeros_like(self.demand_map_init)
             self.table = self.construct_table()
 
-        elif self.env_mode == 'test_construction':
-            construction_filepath = os.path.join('./construction_info_init.npy')
-            init_data_dict = np.load(construction_filepath, allow_pickle=True).item()  # type: dict
-            self.num_workers = num_workers = 5
-            worker_coords = init_data_dict['worker_coords']
-            self.worker_coords_init = worker_coords[:num_workers, :]
-            self.demand_map_init = init_data_dict['demand_map']
-            self.altitude_map_init = deepcopy(self.demand_map_init)
-            self.table = self.construct_table()
-
         elif self.env_mode == 'test':
-            self.num_workers = 2
-            self.worker_coords_init = np.array([
-                [0, 0],
-                [9, 9]
-            ])
-            self.demand_map_init = np.array([
-                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                [0, 1, 2, 2, 2, 2, 2, 2, 1, 0],
-                [0, 1, 2, 3, 3, 3, 3, 2, 1, 0],
-                [0, 1, 2, 3, 3, 3, 3, 2, 1, 0],
-                [0, 1, 2, 3, 3, 3, 3, 2, 1, 0],
-                [0, 1, 2, 3, 3, 3, 3, 2, 1, 0],
-                [0, 1, 2, 2, 2, 2, 2, 2, 1, 0],
-                [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            ])
-            self.altitude_map_init = np.zeros_like(self.demand_map_init)
+            self.altitude_map_init, self.demand_map_init, self.worker_coords_init = self.parse_test_data()
+            self.num_workers = self.worker_coords_init.shape[0]
             self.table = self.construct_table()
 
         self.construct_distance_matrices()
@@ -200,7 +178,7 @@ class Environment:
         entropy = self.entropy_matrix[r, c]
 
         if entropy >= 0:
-            mult = 1
+            mult = 0.5
         else:
             mult = self.entropy_multiplier
 
@@ -224,7 +202,8 @@ class Environment:
 
         busy_worker_ids = self.get_busy_worker_ids()
         busy_workers = self.table[busy_worker_ids, :]
-
+        if len(busy_worker_ids) == 0:
+            pass
         target_ids = busy_workers[:, TC['target']].astype(int)
 
         w2t_dt = busy_workers[:, TC['dt']]  # get worker to target distance
@@ -383,7 +362,9 @@ class Environment:
         mask = self.table[self.cell_ids, TC['active']] == 1
         return self.table[self.cell_ids][mask, TC['env_id']].astype(int)
 
-    def observe(self, target_worker_id):
+    def observe(self,
+                target_worker_id: int,
+                fix_num_nodes: bool = True):
         # define structure of g-edges and g-nodes arrays
         n_types = ['task', 'worker']
         n_status = ['accessible', 'inaccessible', 'assigned', 'unassigned', 'has_ug', 'not_has_ug']
@@ -606,3 +587,17 @@ class Environment:
         demand_map = np.round(np.interp(a, (a.min(), a.max()), (0, max_depth)))
         demand_map = demand_map.astype(int)
         return demand_map
+
+    # noinspection DuplicatedCode
+    def parse_test_data(self):
+        altitude_map = self.test_map_dict['altitude_map']
+        num_rows, num_cols = altitude_map.shape
+        worker_rows, worker_cols = np.where(altitude_map == 90)
+        worker_ys = (num_rows - 1 - worker_rows).reshape(-1, 1)
+        worker_xs = worker_cols.reshape(-1, 1)
+        worker_coords = np.hstack([worker_xs, worker_ys])
+        altitude_map[altitude_map == 90] = 0
+
+        demand_map = altitude_map - self.test_map_dict['required_map']
+
+        return altitude_map, demand_map, worker_coords

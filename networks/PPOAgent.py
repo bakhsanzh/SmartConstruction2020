@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from graph_utils import *
-from networks.GraphActorCritic import GraphActorCritic as GAC
+from networks.GraphActorCritic import GraphActorCritic
 from networks.GraphActorCritic import GACConfig
 
 
@@ -19,8 +19,8 @@ class PPOAgent:
         self.eps_clip = eps_clip
         self.k_epochs = k_epochs
         gac_conf = GACConfig()
-        self.policy = GAC(gac_conf)  # type: GAC
-        self.policy_old = GAC(gac_conf)  # type: GAC
+        self.policy = GraphActorCritic(gac_conf)  # type: GraphActorCritic
+        self.policy_old = GraphActorCritic(gac_conf)  # type: GraphActorCritic
 
         # optimizer and loss
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)

@@ -8,24 +8,25 @@ class GraphActor(nn.Module):
     def __init__(self,
                  node_embed_dim: int,
                  use_ef_init: bool,
-                 ef_init_dim: int,):
+                 ef_init_dim: int):
+
         super(GraphActor, self).__init__()
         self.node_embed_dim = node_embed_dim
         self.use_ef_init = use_ef_init
         self.ef_init_dim = ef_init_dim
         self.actor_input_dim = self.node_embed_dim * 2 + self.use_ef_init * self.ef_init_dim
-        self.actor = MLP(input_dimension=self.actor_input_dim,
-                         output_dimension=1,
-                         num_neurons=[],
-                         out_activation='ReLU',)
+        self.policy_network = MLP(input_dimension=self.actor_input_dim,
+                                  output_dimension=1,
+                                  num_neurons=[32, 32],
+                                  out_activation='ReLU', )
 
     def actor_func(self, edges):
         if self.use_ef_init:
-            actor_input = [edges.src['node_feature'], edges.dst['node_feature'], edges.data['ef_init']]
+            policy_input = [edges.src['node_feature'], edges.dst['node_feature'], edges.data['ef_init']]
         else:
-            actor_input = [edges.src['node_feature'], edges.dst['node_feature']]
-        actor_input = torch.cat(actor_input, dim=1)
-        logits = self.actor(actor_input)  # shape [n_actions x 1]
+            policy_input = [edges.src['node_feature'], edges.dst['node_feature']]
+        policy_input = torch.cat(policy_input, dim=1)
+        logits = self.policy_network(policy_input)  # shape [n_actions x 1]
         action_probs = logits.softmax(0)  # shape [n_actions x 1]
         return {'action_probs': action_probs}
 

@@ -5,6 +5,7 @@
       <w>boxshadow</w>
       <w>cityblock</w>
       <w>colorbar</w>
+      <w>cuda</w>
       <w>entropies</w>
       <w>fname</w>
       <w>halign</w>
@@ -12,8 +13,11 @@
       <w>logprob</w>
       <w>logprobs</w>
       <w>mult</w>
+      <w>multihop</w>
+      <w>perceptron</w>
       <w>probs</w>
       <w>rollout</w>
+      <w>rollouts</w>
       <w>trivials</w>
       <w>valign</w>
       <w>vectorize</w>

@@ -8,6 +8,7 @@ import moviepy.editor as mpy
 import datetime
 import time
 
+MAP_HEIGHT = 300
 
 class EnvHandler:
     def __init__(self, env_data_path):
@@ -58,8 +59,8 @@ class EnvHandler:
 
     @staticmethod
     def get_colors_list(altitude_range):
-        above_color_from = clr.Color('#57E86B')  # green
-        above_color_to = clr.Color('#FEFE69')  # light yellow
+        above_color_from = clr.Color('#be79df')
+        above_color_to = clr.Color('#21243d')  # light yellow
 
         below_color_from = clr.Color('#4c3100')  # dark red
         below_color_to = clr.Color('#ffa500')  # light orange
@@ -309,7 +310,7 @@ class MainUI(Widget):
         height = 130
         altitude_map_pos = (100, height)
 
-        k = 400
+        k = MAP_HEIGHT
         # if max(self.handler.num_rows, self.handler.num_cols) < 7:
         #     k = 250
         altitude_map_size = [None, None]
@@ -471,7 +472,7 @@ class MainUI(Widget):
     def animate(self, obj, movie_duration_max: int = 30):
         assert self.to_export is False
         total_ticks = len(self.handler.tick_snapshots)
-        interval = min(movie_duration_max / total_ticks, 0.5)
+        interval = min(movie_duration_max / total_ticks, 0.2)
         Clock.schedule_interval(self.update, interval)
 
 
@@ -505,16 +506,17 @@ class SCKivyApp(App):
 
 if __name__ == '__main__':
     Builder.load_string(KV_STRING)
-    # ZERO TO DEPTH ANIMATION
-    # main_path = "C:/Users/Sanzhar/PycharmProjects/SmartConstruction2020/saved_models/construction_depth/"
-    # fname = "epochs_171_reward_-171_ticks_300.npy"
+    from test_maps import TEST_MAP_0, TEST_MAP_1, TEST_MAP_2
+    TEST_MAPS = [TEST_MAP_0, TEST_MAP_1, TEST_MAP_2]
 
-    # HILL TO ZERO ANIMATION
-    main_path = "C:/Users/Sanzhar/PycharmProjects/SmartConstruction2020/saved_models/"
-    fname = "epochs_171_reward_-160_ticks_177_reversed.npy"
+    CHECKPOINTS_FOLDER_DIR = os.path.join(os.getcwd(), "checkpoints")
+    map_names = [el['name'] for el in TEST_MAPS]
 
-    env_data_path = os.path.join(main_path, fname)
-    SCKivyApp(data_path=env_data_path,
+    TARGET_MAP = 'two_hills_10x10'
+    # TARGET_MAP = 'square_sink_10x10'
+    # TARGET_MAP = 'wavelike_5x9'
+    data_path = os.path.join(CHECKPOINTS_FOLDER_DIR, TARGET_MAP, TARGET_MAP + ".npy")
+    SCKivyApp(data_path=data_path,
               to_animate=True,
               to_export=False,
               ).run()
