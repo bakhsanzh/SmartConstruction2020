@@ -3,15 +3,12 @@ import numpy as np
 import torch
 from graph_utils import g2e_map
 import dgl
-from environment import Environment
 import json
 import os
-from networks.PPOAgent import PPOAgent
-from networks.GraphActorCritic import GraphActorCritic
 from copy import deepcopy
 
-# DEVICE = torch.device('cpu')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 VERY_SMALL_NUMBER = 1e-10
 VERY_LARGE_NUMBER = 1e10
@@ -38,15 +35,6 @@ TABLE_COL_NAMES = [
     'visited_worker_id',
 ]
 
-NODE_COL_NAMES = [
-    'env_id',
-    'g_id',
-    'soil',
-    'worker',
-    'active',
-    'target',
-]
-
 n_cols_table = len(TABLE_COL_NAMES)
 TC = dict((TABLE_COL_NAMES[i], i) for i in range(n_cols_table))
 
@@ -68,7 +56,7 @@ def save_checkpoint(
         filename,
         folder_path,
         num_epochs: int,
-        agent: PPOAgent,
+        agent,
         kpi_dict: dict,
         env_snapshot=None,
 ):
@@ -102,7 +90,7 @@ def save_checkpoint(
 
 
 def load_model(
-        agent: PPOAgent,
+        agent,
         state_data_path):
     state_dict = torch.load(state_data_path)
     model_state = state_dict['model_state_dict']
@@ -118,7 +106,7 @@ def load_model(
     return agent, num_epochs, kpi_dict
 
 
-def distribute_assignments(env: Environment,
+def distribute_assignments(env,
                            to_compute_rewards: bool,
                            policy,
                            mode: str,
@@ -150,17 +138,17 @@ def distribute_assignments(env: Environment,
             graph=None,  # state + action space
             nn_action=None,  # action
             reward=None,  # reward
-            logprob=None,
+            logprob=None,  # log probability of selected action
             state_value=None,
             env_action=None,
             worker_id=worker_id,
             is_trivial=trivial,
             last_assignment=False,
+            env=None,
         )
 
         if not trivial:  # non trivial action, requires an agent making a decision
             if mode == 'train':
-                assert policy is GraphActorCritic
                 nn_action, logprob, state_value = policy(graph)
                 memory_instance['graph'] = graph
                 memory_instance['nn_action'] = nn_action
@@ -170,23 +158,10 @@ def distribute_assignments(env: Environment,
             elif mode == 'test':
                 nn_action, action_probs = policy.optimal(graph)
 
-            elif mode == 'sim2a-test':
-                nn_action, action_probs = policy.sim2a_optimal(graph)
-
             elif mode == 'rollout':
-                assert policy is PolicyNet
                 nn_action = policy(graph=graph, env=env)  # policy: RolloutEncoder class
                 memory_instance['graph'] = graph
                 memory_instance['nn_action'] = nn_action
-                memory_instance['worker_id'] = worker_id
-
-            elif mode == 'sim2a-train':
-                assert policy is GraphActorCritic
-                nn_action, logprob, state_value = policy.sim2a(graph=graph, env=env)  # policy: RolloutEncoder class
-                memory_instance['graph'] = graph
-                memory_instance['nn_action'] = nn_action
-                memory_instance['logprob'] = logprob
-                memory_instance['state_value'] = state_value
                 memory_instance['worker_id'] = worker_id
 
             env_action = g2e_map(graph, nn_action)

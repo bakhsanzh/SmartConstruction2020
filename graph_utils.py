@@ -1,4 +1,3 @@
-from utils import DEVICE
 from functools import partial
 import dgl
 

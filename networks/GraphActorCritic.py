@@ -1,4 +1,4 @@
-from utils import distribute_assignments, filter_trivials, deepcopy
+from utils import DEVICE, dn
 import torch
 import torch.nn as nn
 from graph_utils import *
@@ -36,7 +36,7 @@ class GACConfig(ConfigBase):
             'use_ef_init': False,
             'use_dst_features': False,
             'use_nf_concat': True,
-            'num_neurons': [32],
+            'num_neurons': [],
             'spectral_norm': False
         }
 
@@ -47,60 +47,21 @@ class GACConfig(ConfigBase):
         }
 
 
-
 class GraphActorCritic(nn.Module):
     def __init__(self, conf):
         super(GraphActorCritic, self).__init__()
         self.conf = conf  # type: GACConfig
-        self.num_rollouts = self.conf.gac['num_rollouts']
-        self.planning_horizon = self.conf.gac['planning_horizon']
         self.node_embed_dim = self.conf.gac['node_embed_dim']
-        self.rollout_encoder = RolloutEncoder(conf=conf.rollout_encoder, **conf.rollout_encoder)
-        self.model_free_gn = RelationalGN(**self.conf.mf_gn).to(DEVICE)
         self.multihop_rgn = self.conf.gac['multihop_rgn']
-        self.multihop_rgn = RelationalGN(**self.conf.rgn).to(DEVICE)
+        self.rgn = RelationalGN(**self.conf.rgn).to(DEVICE)
         self.actor = GraphActor(**self.conf.graph_actor).to(DEVICE)
         self.critic = MLP(self.node_embed_dim, 1).to(DEVICE)
         self.rollout_memory = []
-        self.rewards = []
-
-        """
-        # if self.multihop_rgn:
-        #     self.rgn = MultiLayerRGN(**self.conf.rgn).to(DEVICE)
-        # else:
-        #     self.rgn = SingleLayerRGN(**self.conf.rgn).to(DEVICE)"""
 
     def forward(self, graph: dgl.DGLGraph):
         graph = self.rgn(graph=graph, node_feature=graph.ndata['nf_init'])  # Relational Graph Network
         node_embed = graph.ndata.pop('node_feature')
         # temp = node_embed.cpu().detach().numpy()
-
-        # critic
-        state_value = self.critic(node_embed)
-        state_value = state_value.mean(dim=0)
-
-        # actor (action probs)
-        action_probabilities = self.actor(graph=graph, node_feature=node_embed)  # shape [n_actions]
-
-        # sample action for exploration
-        edge_action_distribution = Categorical(action_probabilities)
-        nn_action = edge_action_distribution.sample()  # tensor(x)  # index of the edge chosen for action
-
-        # logprob of the nn_action
-        logprob = edge_action_distribution.log_prob(nn_action)  # tensor(x)
-
-        return nn_action, logprob, state_value
-
-    def sim2a_forward(self,
-                      graph: dgl.DGLGraph,
-                      env: Environment):
-
-        rollout_embed = self.rollout_encoder(env=deepcopy(env))
-        updated_graph = self.model_free_gn(graph=graph, node_feature=graph.ndata['nf_init'])  # Relational Graph Network
-        node_embed = updated_graph.ndata.pop('node_feature')
-
-        actor_input = torch.cat([rollout_embed, node_embed], dim=-1)
-        action_probabilities = self.actor(graph=graph, node_feature=actor_input)  # shape [n_actions]
 
         # critic
         state_value = self.critic(node_embed)

@@ -56,9 +56,9 @@ class PolicyNet(nn.Module):
         nn_action = edge_action_distribution.sample()  # tensor(x)  # index of the edge chosen for action
 
         # logprob of the nn_action
-        # logprob = edge_action_distribution.log_prob(nn_action)  # tensor(x)
+        logprob = edge_action_distribution.log_prob(nn_action)  # tensor(x)
 
-        return nn_action
+        return nn_action, logprob
 
 
 class RolloutEncoder(nn.Module):

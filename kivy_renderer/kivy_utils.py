@@ -20,11 +20,15 @@ from copy import copy, deepcopy
 from kivy.clock import Clock
 
 WORKER_COLORS = [
-    '#FF1654',
     '#5026a7',
     '#247BA0',
     '#8d448b',
     '#70C1B3',
+    "#ffb947",
+    "#ff7256",
+    "#aaaaaa",
+    "#880088",
+    '#FF1654',
     '#B2DBBF',
     '#F3FFBD',
 
@@ -108,17 +112,17 @@ KV_STRING = """
             rectangle: (root.x, root.y, root.width, root.height)
 
 
-<ColoredRectangle>:
-    size_hint: None, None
-    size: self.size
-    pos: self.pos
-
-    canvas.before:
-        Color:
-            rgb: root.color
-        Rectangle:
-            size: root.size
-            pos: root.pos
+# <ColoredRectangle>:
+#     size_hint: None, None
+#     size: self.size
+#     pos: self.pos
+# 
+#     canvas.after:
+#         Color:
+#             rgb: root.color
+#         Rectangle:
+#             size: root.size
+#             pos: root.pos
 """
 
 
@@ -218,13 +222,13 @@ class PanelWidget(Widget):
         super(PanelWidget, self).__init__(**kwargs)
         self.rad_mult = 0.25  # PIL GBlur seems to be stronger than Chrome's so I lower the radius
 
-        self.canvas.add(Color(*self.bg_color))
+        self.canvas.before.add(Color(*self.bg_color))
         if self.with_shadow:
             self._create_shadow()
-            self.canvas.add(Rectangle(size=self.shadow_size_1, pos=self.shadow_pos_1, texture=self.shadow_texture_1))
-            self.canvas.add(Rectangle(size=self.shadow_size_2, pos=self.shadow_pos_2, texture=self.shadow_texture_2))
-            self.canvas.add(Color(*self.bg_color))
-            self.canvas.add(Rectangle(size=self.size, pos=self.pos))
+            self.canvas.before.add(Rectangle(size=self.shadow_size_1, pos=self.shadow_pos_1, texture=self.shadow_texture_1))
+            self.canvas.before.add(Rectangle(size=self.shadow_size_2, pos=self.shadow_pos_2, texture=self.shadow_texture_2))
+            self.canvas.before.add(Color(*self.bg_color))
+            self.canvas.before.add(Rectangle(size=self.size, pos=self.pos))
 
         if self.with_border:
             self.canvas.add(
@@ -298,7 +302,7 @@ class LabelWidget(Widget):
 
         self.label = Label(pos=self.pos,
                            size=self.size,
-                           text_size=self.size,
+                           # text_size=self.size,
                            **label_kwargs)
         self.add_widget(self.label)
 
@@ -312,6 +316,10 @@ class ColoredRectangle(Widget):
 
     def __init__(self, **kwargs):
         super(ColoredRectangle, self).__init__(**kwargs)
+
+        with self.canvas:
+            self.fill_color = Color(rgb=self.color)
+            self.rect = Rectangle(size=self.size, pos=self.pos)
 
 
 class CustomButton(Button):

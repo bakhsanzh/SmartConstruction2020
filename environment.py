@@ -32,6 +32,7 @@ class Environment:
         self.t2t = None
         self.w2t = None
         self.w2w = None
+        self.t2w = None
         self.nb_max, self.nb_min = None, None
         self.entropy_matrix = None
         self.visited_cells_buffer = None
@@ -138,7 +139,7 @@ class Environment:
         table[self.worker_ids, TC['accessible']] = 1
 
         # ----------------------------------------MARK CELL ID OF TASK UNDER WORKER -----------------------------------
-        worker_coords_init = self.get_coords(self.worker_ids, table)
+        worker_coords_init = self.get_coords(self.worker_ids)
         for i, w_coord in enumerate(worker_coords_init):
             w_id = self.worker_ids[i]
             under_cell_ids = self.get_cells_at_coords_xy(w_coord)
@@ -241,14 +242,12 @@ class Environment:
             self.table[cell_id, TC['nb_min']] = nb_min
             self.table[cell_id, TC['nb_max']] = nb_max
 
-    def get_coords(self, ids, table=None):
-        if table is None:
-            table = self.table
+    def get_coords(self, ids):
         ix_mask = (type(ids) is np.ndarray) and (len(ids.shape) > 0)
         if ix_mask:
-            return table[np.ix_(ids, get_cols(self.coord_col_names, TC))]
+            return self.table[np.ix_(ids, get_cols(self.coord_col_names, TC))]
         else:
-            return table[ids, get_cols(self.coord_col_names, TC)]
+            return self.table[ids, get_cols(self.coord_col_names, TC)]
 
     def construct_distance_matrices(self):
         worker_coords = self.get_worker_coords()
@@ -262,11 +261,13 @@ class Environment:
         self.t2t = t2t  # type: np.array()
         self.w2t = w2t  # type: np.array()
         self.w2w = w2w  # type: np.array()
+        self.t2w = np.transpose(w2t)
 
     def update_worker_dist(self):
         worker_coords = self.get_worker_coords()
         self.w2w = cdist(worker_coords, worker_coords, metric='cityblock')
         self.w2t = cdist(worker_coords, self.cell_coords, metric='cityblock')
+        self.t2w = np.transpose(self.w2t)
 
     def get_worker_coords(self):
         return self.table[np.ix_(self.worker_ids, get_cols(self.coord_col_names, TC))]
@@ -452,6 +453,8 @@ class Environment:
         t2w_edges[:, ec['env_dst']] = w2t_edges[:, ec['env_src']]
         t2w_edges[:, ec['w2t']] = 0
         t2w_edges[:, ec['t2w']] = 1
+        t2w_edges[:, ec['dist']] = self.t2w[np.ix_(accessible_cell_ids, self.worker_ids - self.num_cells)].reshape(-1)
+
 
         w2w_src_dst = np.array(list(product(self.worker_ids, self.worker_ids)))
         w2w_edges = np.zeros([w2w_src_dst.shape[0], n_cols_edge])

@@ -32,7 +32,7 @@ construction_demand_map = np.array([
     [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 90, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-])
+], dtype=int)
 
 if __name__ == '__main__':
     num_rows, num_cols = construction_demand_map.shape
@@ -43,5 +43,5 @@ if __name__ == '__main__':
     construction_demand_map[construction_demand_map == 90] = 0
 
     to_export = dict(demand_map=deepcopy(construction_demand_map), worker_coords=deepcopy(worker_coords))
-    np.save(file='construction_info_init.npy', arr=to_export, allow_pickle=True)
+    np.save(file='test_cases/construction_info_init.npy', arr=to_export, allow_pickle=True)
     print('---')

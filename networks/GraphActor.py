@@ -17,7 +17,7 @@ class GraphActor(nn.Module):
         self.actor_input_dim = self.node_embed_dim * 2 + self.use_ef_init * self.ef_init_dim
         self.actor = MLP(input_dimension=self.actor_input_dim,
                          output_dimension=1,
-                         num_neurons=[32],
+                         num_neurons=[],
                          out_activation='ReLU', )
 
     def actor_func(self, edges):

@@ -6,14 +6,13 @@ import torch
 import numpy as np
 import os
 import json
-from test_maps import TEST_MAP_0, TEST_MAP_1, TEST_MAP_2
+from test_scenario import TEST_MAP_0, TEST_MAP_1, TEST_MAP_2
 
 np.set_printoptions(suppress=True)
 
 # GLOBALS
 TEST_MAPS = [TEST_MAP_0, TEST_MAP_1, TEST_MAP_2]
 CHECKPOINTS_FOLDER_DIR = os.path.join(os.getcwd(), "checkpoints")
-
 
 
 def run_episode(

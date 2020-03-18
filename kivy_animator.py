@@ -10,6 +10,7 @@ import time
 
 MAP_HEIGHT = 300
 
+
 class EnvHandler:
     def __init__(self, env_data_path):
         self.demand_map_buffer, self.altitude_map_buffer, self.worker_trace_buffer, self.visited_cells_buffer = np.load(
@@ -25,7 +26,6 @@ class EnvHandler:
         self.tick_snapshots = self.create_tick_snapshots()
         self.num_rows, self.num_cols = self.demand_map_buffer[0, 1].shape
         self.num_workers = self.worker_trace_buffer[0, 1].shape[0]
-        # self.altitude_map_buffer[0, 1][0, 0] = 3
 
         max_altitude, min_altitude = self.altitude_map_buffer[0, 1].max(), self.altitude_map_buffer[-1, 1].min()
         self.altitude_range = altitude_range = np.arange(min_altitude, max_altitude + 1).astype(int)
@@ -35,6 +35,11 @@ class EnvHandler:
         self.num_total_demanded_volume = self.demand_map_init.sum()
 
     def update_completed_cells(self, tick_id):
+        """
+        :param tick_id: int
+        :return: None
+        GOAL: depending on the tick_id, update number of completed cells so far.
+        """
         demand_map_current = self.tick_snapshots[tick_id]['demand_map']  # type: np.array
         if demand_map_current is not None:
             self.num_completed_cells = self.num_total_demanded_volume - demand_map_current.sum()
@@ -142,6 +147,7 @@ class VolumeColorBarWidget(Widget):
                             bg_color=get_rgba_color('black', a=1),
                             with_shadow=True,
                             elevation=3)
+
         self.add_widget(panel)
 
         num_cells = len(self.handler.altitude_range)
@@ -356,6 +362,8 @@ class MainUI(Widget):
         num_cells_completed_size = self.altitude_map.width / 2, 30
         num_cells_label_kwargs = copy(time_label_kwargs)
         num_cells_label_kwargs['halign'] = 'left'
+        num_cells_label_kwargs['valign'] = 'middle'
+
         num_cells_label_kwargs['text'] = 'None'
 
         self.num_cells_label = LabelWidget(pos=num_cells_completed_pos,
@@ -453,7 +461,7 @@ class MainUI(Widget):
 
         start_duration_sec = 2
         end_duration_sec = 2
-        fps = int(1/interval)
+        fps = int(1 / interval)
         start_list = [self.images[0] for _ in range(int(start_duration_sec * fps))]
         end_list = [self.images[-1] for _ in range(int(end_duration_sec * fps))]
         images = start_list + self.images + end_list
@@ -504,18 +512,21 @@ class SCKivyApp(App):
         return self.main_layout
 
 
+def run_kivy_app(kwargs):
+    SCKivyApp(**kwargs).run()
+
+
 if __name__ == '__main__':
     Builder.load_string(KV_STRING)
-    from test_maps import TEST_MAP_0, TEST_MAP_1, TEST_MAP_2
-    TEST_MAPS = [TEST_MAP_0, TEST_MAP_1, TEST_MAP_2]
-
-    CHECKPOINTS_FOLDER_DIR = os.path.join(os.getcwd(), "checkpoints")
-    map_names = [el['name'] for el in TEST_MAPS]
-
-    TARGET_MAP = 'two_hills_10x10'
+    # from test_scenario import TEST_MAP_0, TEST_MAP_1, TEST_MAP_2
+    # TEST_MAPS = [TEST_MAP_0, TEST_MAP_1, TEST_MAP_2]
+    # CHECKPOINTS_FOLDER_DIR = os.path.join(os.getcwd(), "checkpoints")
+    # map_names = [el['name'] for el in TEST_MAPS]
     # TARGET_MAP = 'square_sink_10x10'
     # TARGET_MAP = 'wavelike_5x9'
-    data_path = os.path.join(CHECKPOINTS_FOLDER_DIR, TARGET_MAP, TARGET_MAP + ".npy")
+
+    TARGET_MAP = 'test_1'
+    data_path = os.path.join(os.getcwd(), "test_cases", TARGET_MAP + ".npy")
     SCKivyApp(data_path=data_path,
               to_animate=True,
               to_export=False,
